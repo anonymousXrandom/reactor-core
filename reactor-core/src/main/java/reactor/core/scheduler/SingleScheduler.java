@@ -148,7 +148,7 @@ final class SingleScheduler implements Scheduler, Supplier<ScheduledExecutorServ
 		if (key == Attr.NAME) return this.toString();
 		if (key == Attr.CAPACITY) return 1;
 
-		return Scheduler.super.scanUnsafe(key);
+		return Schedulers.scanExecutor(executor, key);
 	}
 
 	@Override
