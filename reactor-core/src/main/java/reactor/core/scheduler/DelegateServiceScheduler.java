@@ -51,7 +51,7 @@ final class DelegateServiceScheduler implements Scheduler {
 
 	@Override
 	public Worker createWorker() {
-		return new ExecutorServiceWorker(executor);
+		return new ExecutorServiceWorker(executor, this);
 	}
 
 	@Override
@@ -92,6 +92,13 @@ final class DelegateServiceScheduler implements Scheduler {
 			return (ScheduledExecutorService) executor;
 		}
 		return new UnsupportedScheduledExecutorService(executor);
+	}
+
+	@Override
+	public Object scanUnsafe(Attr key) {
+		if (key == Attr.NAME) return Schedulers.FROM_EXECUTOR_SERVICE + "(" + executor + ")";
+
+		return Schedulers.scanExecutor(executor, key, Scheduler.super::scanUnsafe);
 	}
 
 	static final class UnsupportedScheduledExecutorService
@@ -220,6 +227,11 @@ final class DelegateServiceScheduler implements Scheduler {
 				long delay,
 				@NotNull TimeUnit unit) {
 			throw Exceptions.failWithRejectedNotTimeCapable();
+		}
+
+		@Override
+		public String toString() {
+			return exec.toString();
 		}
 	}
 

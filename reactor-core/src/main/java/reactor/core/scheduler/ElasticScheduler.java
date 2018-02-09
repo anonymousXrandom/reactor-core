@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 
 import reactor.core.Disposable;
 import reactor.core.Disposables;
+import reactor.core.Scannable;
 import reactor.util.annotation.Nullable;
 
 /**
@@ -178,6 +179,25 @@ final class ElasticScheduler implements Scheduler, Supplier<ScheduledExecutorSer
 	}
 
 	@Override
+	public String toString() {
+		StringBuilder ts = new StringBuilder(Schedulers.ELASTIC)
+				.append('(');
+		if (factory instanceof Supplier) {
+			ts.append('\"').append(((Supplier) factory).get()).append('\"');
+		}
+		ts.append(')');
+		return ts.toString();
+	}
+
+	@Override
+	public Object scanUnsafe(Attr key) {
+		if (key == Attr.CAPACITY) return Integer.MAX_VALUE;
+		if (key == Attr.NAME) return this.toString();
+
+		return Scheduler.super.scanUnsafe(key);
+	}
+
+	@Override
 	public Worker createWorker() {
 		return new ElasticWorker(pick());
 	}
@@ -190,12 +210,13 @@ final class ElasticScheduler implements Scheduler, Supplier<ScheduledExecutorSer
 			if (e.expireMillis < now) {
 				if (cache.remove(e)) {
 					e.cached.exec.shutdownNow();
+					//TODO shouldn't we remove from all at some point?
 				}
 			}
 		}
 	}
 
-	static final class CachedService implements Disposable {
+	static final class CachedService implements Disposable, Scannable {
 
 		final ElasticScheduler         parent;
 		final ScheduledExecutorService exec;
@@ -227,6 +248,19 @@ final class ElasticScheduler implements Scheduler, Supplier<ScheduledExecutorSer
 					}
 				}
 			}
+		}
+
+		@Override
+		public Object scanUnsafe(Attr key) {
+			if (key == Attr.NAME) return parent.scanUnsafe(key);
+			if (key == Attr.PARENT) return parent;
+			if (key == Attr.TERMINATED || key == Attr.CANCELLED) return isDisposed();
+			if (key == Attr.CAPACITY) {
+				//assume 1 if unknown, otherwise use the one from underlying executor
+				Integer capacity = (Integer) Schedulers.scanExecutor(exec, key, k -> -1);
+				if (capacity == null || capacity == -1) return 1;
+			}
+			return Schedulers.scanExecutor(exec, key, null);
 		}
 	}
 
@@ -314,6 +348,14 @@ final class ElasticScheduler implements Scheduler, Supplier<ScheduledExecutorSer
 		@Override
 		public boolean isDisposed() {
 			return tasks.isDisposed();
+		}
+
+		@Override
+		public Object scanUnsafe(Attr key) {
+			if (key == Attr.NAME) return cached.scanUnsafe(key) + ".worker";
+			if (key == Attr.PARENT) return cached.parent;
+
+			return cached.scanUnsafe(key);
 		}
 	}
 }

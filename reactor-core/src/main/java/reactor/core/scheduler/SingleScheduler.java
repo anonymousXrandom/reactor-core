@@ -134,8 +134,26 @@ final class SingleScheduler implements Scheduler, Supplier<ScheduledExecutorServ
 	}
 
 	@Override
+	public String toString() {
+		StringBuilder ts = new StringBuilder(Schedulers.SINGLE)
+				.append('(');
+		if (factory instanceof Supplier) {
+			ts.append('\"').append(((Supplier) factory).get()).append('\"');
+		}
+		return ts.append(')').toString();
+	}
+
+	@Override
+	public Object scanUnsafe(Attr key) {
+		if (key == Attr.NAME) return this.toString();
+		if (key == Attr.CAPACITY) return 1;
+
+		return Scheduler.super.scanUnsafe(key);
+	}
+
+	@Override
 	public Worker createWorker() {
-		return new ExecutorServiceWorker(executor);
+		return new ExecutorServiceWorker(executor, this);
 	}
 
 }

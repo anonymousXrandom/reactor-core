@@ -16,6 +16,7 @@
 
 package reactor.core.scheduler;
 
+import java.lang.ref.WeakReference;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -31,9 +32,12 @@ final class ExecutorServiceWorker implements Scheduler.Worker, Disposable {
 
 	final Composite tasks;
 
-	ExecutorServiceWorker(ScheduledExecutorService exec) {
+	final WeakReference<Scheduler> scheduler;
+
+	ExecutorServiceWorker(ScheduledExecutorService exec, Scheduler parent) {
 		this.exec = exec;
 		this.tasks = Disposables.composite();
+		this.scheduler = new WeakReference<>(parent);
 	}
 
 	@Override
@@ -67,5 +71,17 @@ final class ExecutorServiceWorker implements Scheduler.Worker, Disposable {
 	@Override
 	public boolean isDisposed() {
 		return tasks.isDisposed();
+	}
+
+	@Override
+	public Object scanUnsafe(Attr key) {
+		if (key == Attr.BUFFERED) return tasks.size();
+		if (key == Attr.TERMINATED || key == Attr.CANCELLED) return isDisposed();
+
+		Scheduler s = scheduler.get();
+		if (s == null) return null;
+
+		if (key == Attr.NAME) return s.scanUnsafe(Attr.NAME) + ".worker";
+		return s.scanUnsafe(key);
 	}
 }

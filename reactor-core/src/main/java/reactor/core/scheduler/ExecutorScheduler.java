@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import reactor.core.Disposable;
 import reactor.core.Disposables;
 import reactor.core.Exceptions;
+import reactor.core.Scannable;
 
 /**
  * Wraps a java.util.concurrent.Executor and provides the Scheduler API over it.
@@ -82,6 +83,23 @@ final class ExecutorScheduler implements Scheduler {
 	public Worker createWorker() {
 		return trampoline ? new ExecutorSchedulerTrampolineWorker(executor) :
 				new ExecutorSchedulerWorker(executor);
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder ts = new StringBuilder(Schedulers.FROM_EXECUTOR)
+				.append('(').append(executor);
+		if (trampoline) ts.append(",trampolining");
+		ts.append(')');
+
+		return ts.toString();
+	}
+
+	@Override
+	public Object scanUnsafe(Attr key) {
+		if (key == Attr.NAME) return toString();
+
+		return Scheduler.super.scanUnsafe(key);
 	}
 
 	/**
@@ -242,6 +260,18 @@ final class ExecutorScheduler implements Scheduler {
 			tasks.remove(r);
 		}
 
+		@Override
+		public Object scanUnsafe(Attr key) {
+			if (key == Attr.BUFFERED) return tasks.size();
+			if (key == Attr.PARENT) return (executor instanceof Scannable) ? executor : null;
+			if (key == Attr.NAME) {
+				//hack to recognize the SingleWorker
+				if (executor instanceof SingleWorkerScheduler) return executor + ".worker";
+				return Schedulers.FROM_EXECUTOR + "("  + executor + ").worker";
+			}
+
+			return Schedulers.scanExecutor(executor, key, Worker.super::scanUnsafe);
+		}
 	}
 
 	/**
@@ -356,6 +386,15 @@ final class ExecutorScheduler implements Scheduler {
 					break;
 				}
 			}
+		}
+
+		@Override
+		public Object scanUnsafe(Attr key) {
+			if (key == Attr.PARENT) return (executor instanceof Scannable) ? executor : null;
+			if (key == Attr.NAME) return Schedulers.FROM_EXECUTOR + "("  + executor + ",trampolining).worker";
+			if (key == Attr.BUFFERED || key == Attr.LARGE_BUFFERED) return queue.size();
+
+			return Schedulers.scanExecutor(executor, key, Worker.super::scanUnsafe);
 		}
 	}
 

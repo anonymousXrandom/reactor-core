@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 
 import reactor.core.Disposable;
 import reactor.core.Exceptions;
+import reactor.core.Scannable;
 
 /**
  * Provides an abstract asynchronous boundary to operators.
@@ -35,7 +36,7 @@ import reactor.core.Exceptions;
  * @author Stephane Maldini
  * @author Simon Baslé
  */
-public interface Scheduler extends Disposable {
+public interface Scheduler extends Disposable, Scannable {
 
 	/**
 	 * Schedules the non-delayed execution of the given task on this scheduler.
@@ -139,6 +140,12 @@ public interface Scheduler extends Disposable {
 	default void start() {
 	}
 
+	@Override
+	default Object scanUnsafe(Attr key) {
+		if (key == Attr.TERMINATED || key == Attr.CANCELLED) return isDisposed();
+		return null;
+	}
+
 	/**
 	 * A worker representing an asynchronous boundary that executes tasks in
 	 * a FIFO order, guaranteed non-concurrently with respect to each other.
@@ -146,7 +153,7 @@ public interface Scheduler extends Disposable {
 	 * @author Stephane Maldini
 	 * @author Simon Baslé
 	 */
-	interface Worker extends Disposable {
+	interface Worker extends Disposable, Scannable {
 
 		/**
 		 * Schedules the task for immediate execution on this worker.
@@ -195,11 +202,13 @@ public interface Scheduler extends Disposable {
 		default Disposable schedulePeriodically(Runnable task, long initialDelay, long period, TimeUnit unit) {
 			throw Exceptions.failWithRejectedNotTimeCapable();
 		}
+
+		//most implementations should override and link to their parent Scheduler via Attr.PARENT
+		@Override
+		default Object scanUnsafe(Attr key) {
+			if (key == Attr.TERMINATED || key == Attr.CANCELLED) return isDisposed();
+
+			return null;
+		}
 	}
-	
-	/**
-	 * Returned by the schedule() methods if the Scheduler or the Worker has ben shut down,
-	 * or is incapable of scheduling tasks with a delay/periodically (not "time capable").
-	 */
-//	Disposable REJECTED = new RejectedDisposable();
 }

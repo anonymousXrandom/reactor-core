@@ -24,16 +24,20 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import reactor.core.Disposable;
 import reactor.core.Exceptions;
+import reactor.core.Scannable;
 import reactor.util.Logger;
 import reactor.util.Loggers;
+import reactor.util.annotation.Nullable;
 
 import static reactor.core.Exceptions.unwrap;
 
@@ -481,10 +485,13 @@ public abstract class Schedulers {
 	}
 
 	// Internals
-	static final String ELASTIC  = "elastic"; // IO stuff
-	static final String PARALLEL = "parallel"; //scale up common tasks
-	static final String SINGLE   = "single"; //non blocking tasks
-	static final String TIMER    = "timer"; //timed tasks
+	static final String ELASTIC               = "elastic"; // IO stuff
+	static final String PARALLEL              = "parallel"; //scale up common tasks
+	static final String SINGLE                = "single"; //non blocking tasks
+	static final String IMMEDIATE             = "immediate";
+	static final String FROM_EXECUTOR         = "fromExecutor";
+	static final String FROM_EXECUTOR_SERVICE = "fromExecutorService";
+
 
 	// Cached schedulers in atomic references:
 	static AtomicReference<CachedScheduler> CACHED_ELASTIC  = new AtomicReference<>();
@@ -635,6 +642,16 @@ public abstract class Schedulers {
 			return cached.isDisposed();
 		}
 
+		@Override
+		public String toString() {
+			return cached.toString();
+		}
+
+		@Override
+		public Object scanUnsafe(Attr key) {
+			return cached.scanUnsafe(key);
+		}
+
 		/**
 		 * Get the {@link Scheduler} that is cached and wrapped inside this
 		 * {@link CachedScheduler}.
@@ -741,6 +758,67 @@ public abstract class Schedulers {
 	static ScheduledExecutorService decorateExecutorService(String schedulerType,
 			Supplier<? extends ScheduledExecutorService> actual) {
 		return factory.decorateExecutorService(schedulerType, actual);
+	}
+
+	/**
+	 * Scan an {@link Executor} or {@link ExecutorService}, recognizing several special
+	 * implementations. Unwraps some decorating schedulers, recognizes {@link Scannable}
+	 * schedulers and delegates to their {@link Scannable#scanUnsafe(Scannable.Attr)}
+	 * method, introspects {@link ThreadPoolExecutor} instances.
+	 *
+	 * @param executor the executor to introspect in a best effort manner.
+	 * @param key the key to scan for. CAPACITY and BUFFERED mainly.
+	 * @return an equivalent of {@link Scannable#scanUnsafe(Scannable.Attr)} but that can
+	 * also work on some implementations of {@link Executor}
+	 */
+	@Nullable
+	static final Object scanExecutor(Executor executor, Scannable.Attr key) {
+		return scanExecutor(executor, key, null);
+	}
+
+	/**
+	 * Scan an {@link Executor} or {@link ExecutorService}, recognizing several special
+	 * implementations. Unwraps some decorating schedulers, recognizes {@link Scannable}
+	 * schedulers and delegates to their {@link Scannable#scanUnsafe(Scannable.Attr)}
+	 * method, introspects {@link ThreadPoolExecutor} instances.
+	 * <p>
+	 * If no data can be extracted, defaults to the provided {@code orElse}
+	 * {@link Scannable#scanUnsafe(Scannable.Attr) scanUnsafe}.
+	 *
+	 * @param executor the executor to introspect in a best effort manner.
+	 * @param key the key to scan for. CAPACITY and BUFFERED mainly.
+	 * @param orElse the scanUnsafe call to fallback to when nothing in particular can be
+	 * introspected for that {@link Executor}.
+	 * @return an equivalent of {@link Scannable#scanUnsafe(Scannable.Attr)} but that can
+	 * also work on some implementations of {@link Executor}
+	 */
+	@Nullable
+	static final Object scanExecutor(Executor executor, Scannable.Attr key, @Nullable Function<Scannable.Attr, Object> orElse) {
+		if (executor instanceof DelegateServiceScheduler.UnsupportedScheduledExecutorService) {
+			executor = ((DelegateServiceScheduler.UnsupportedScheduledExecutorService) executor).get();
+		}
+		if (executor instanceof Scannable) {
+			return ((Scannable) executor).scanUnsafe(key);
+		}
+
+		if (executor instanceof ThreadPoolExecutor) {
+				final ThreadPoolExecutor poolExecutor = (ThreadPoolExecutor) executor;
+				if (key == Scannable.Attr.CAPACITY) return poolExecutor.getMaximumPoolSize();
+				if (key == Scannable.Attr.BUFFERED) return ((Long) (poolExecutor.getTaskCount() - poolExecutor.getCompletedTaskCount())).intValue();
+				if (key == Scannable.Attr.LARGE_BUFFERED) return poolExecutor.getTaskCount() - poolExecutor.getCompletedTaskCount();
+		} else {
+			if (key == Scannable.Attr.CAPACITY || key == Scannable.Attr.BUFFERED) return -1;
+			if (key == Scannable.Attr.LARGE_BUFFERED) return -1L;
+		}
+
+		if (executor instanceof ExecutorService) {
+			ExecutorService service = (ExecutorService) executor;
+			if (key == Scannable.Attr.TERMINATED) return service.isTerminated();
+			if (key == Scannable.Attr.CANCELLED) return service.isShutdown();
+		}
+
+		if (orElse != null) return orElse.apply(key);
+		return null;
 	}
 
 }

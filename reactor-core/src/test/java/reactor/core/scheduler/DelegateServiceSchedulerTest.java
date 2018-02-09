@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.Test;
 import reactor.core.Exceptions;
+import reactor.core.Scannable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler.Worker;
@@ -139,5 +140,40 @@ public class DelegateServiceSchedulerTest extends AbstractSchedulerTest {
 		finally {
 			s.dispose();
 		}
+	}
+
+	@Test
+	public void scanName() {
+		Scheduler fixedThreadPool = Schedulers.fromExecutorService(Executors.newFixedThreadPool(3));
+		Scheduler cachedThreadPool = Schedulers.fromExecutorService(Executors.newCachedThreadPool());
+		Scheduler singleThread = Schedulers.fromExecutorService(Executors.newSingleThreadExecutor());
+
+		try {
+			System.out.println("scheduler NAME = " + fixedThreadPool.scan(Scannable.Attr.NAME));
+			System.out.println("scheduler NAME = " + cachedThreadPool.scan(Scannable.Attr.NAME));
+			System.out.println("scheduler NAME = " + singleThread.scan(Scannable.Attr.NAME));
+		}
+		finally {
+			fixedThreadPool.dispose();
+			cachedThreadPool.dispose();
+			singleThread.dispose();
+		}
+	}
+
+	@Test
+	public void scanExecutorAttributes() {
+		Scheduler fixedThreadPool = Schedulers.fromExecutorService(Executors.newFixedThreadPool(3));
+
+		Long test = Integer.MAX_VALUE + 1L;
+		System.out.println(test.intValue() == Integer.MAX_VALUE);
+
+		assertThat(fixedThreadPool.scan(Scannable.Attr.CAPACITY)).isEqualTo(3);
+		assertThat(fixedThreadPool.scan(Scannable.Attr.BUFFERED)).isZero();
+		assertThat(fixedThreadPool.scan(Scannable.Attr.LARGE_BUFFERED)).isZero();
+
+		fixedThreadPool.schedule(() -> {
+			assertThat(fixedThreadPool.scan(Scannable.Attr.BUFFERED)).isNotZero();
+			assertThat(fixedThreadPool.scan(Scannable.Attr.LARGE_BUFFERED)).isNotZero();
+		});
 	}
 }

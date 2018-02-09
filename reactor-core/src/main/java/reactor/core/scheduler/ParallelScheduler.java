@@ -165,7 +165,26 @@ final class ParallelScheduler implements Scheduler, Supplier<ScheduledExecutorSe
     }
 
     @Override
+    public String toString() {
+        StringBuilder ts = new StringBuilder(Schedulers.PARALLEL)
+                .append('(').append(n);
+        if (factory instanceof Supplier) {
+            ts.append(",\"").append(((Supplier) factory).get()).append('\"');
+        }
+        ts.append(')');
+        return ts.toString();
+    }
+
+    @Override
+    public Object scanUnsafe(Attr key) {
+        if (key == Attr.CAPACITY) return n;
+        if (key == Attr.NAME) return this.toString();
+
+        return Scheduler.super.scanUnsafe(key);
+    }
+
+    @Override
     public Worker createWorker() {
-        return new ExecutorServiceWorker(pick());
+        return new ExecutorServiceWorker(pick(), this);
     }
 }

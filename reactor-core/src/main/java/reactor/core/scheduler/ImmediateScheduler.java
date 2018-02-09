@@ -52,6 +52,14 @@ final class ImmediateScheduler implements Scheduler {
         //NO-OP
     }
 
+
+    @Override
+    public Object scanUnsafe(Attr key) {
+        if (key == Attr.NAME) return Schedulers.IMMEDIATE;
+
+        return Scheduler.super.scanUnsafe(key);
+    }
+
     @Override
     public Worker createWorker() {
         return new ImmediateSchedulerWorker();

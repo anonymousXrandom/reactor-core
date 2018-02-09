@@ -71,4 +71,17 @@ final class SingleWorkerScheduler implements Scheduler, Executor {
     public boolean isDisposed() {
         return main.isDisposed();
     }
+
+    @Override
+    public String toString() {
+        return Schedulers.SINGLE + "Worker(" + main.scanUnsafe(Attr.NAME) + ")";
+    }
+
+    @Override
+    public Object scanUnsafe(Attr key) {
+        if (key == Attr.PARENT) return main;
+        if (key == Attr.NAME) return this.toString();
+
+        return main.scanUnsafe(key);
+    }
 }
